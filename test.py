@@ -10,11 +10,16 @@ def split_into_sentences(paragraph: str) -> List[str]:
     sentences = paragraph.strip().split(". ")
     return [s.strip() for s in sentences if s]
 
-def create_windows(sentences: List[str], window_size: int) -> List[List[str]]:
-    # Create windows of a specified size
+def create_windows(sentences: List[str], window_size: int, stride: int) -> List[List[str]]:
+    # Create windows with a specified size and stride
     windows = []
-    for i in range(len(sentences) - window_size + 1):
-        windows.append(sentences[i:i + window_size])
+    for i in range(0, len(sentences), stride):
+        window = sentences[i:i + window_size]
+        # Pad the window if it's shorter than the window_size
+        if len(window) < window_size:
+            padding = ["[PAD]"] * (window_size - len(window))
+            window.extend(padding)
+        windows.append(window)
     return windows
 
 def replace_with_random_sentences(window: List[str], corpus_sentences: List[str], replace_count: int) -> List[str]:
@@ -22,11 +27,12 @@ def replace_with_random_sentences(window: List[str], corpus_sentences: List[str]
     modified_window = window[:]
     replace_indices = random.sample(range(len(window)), replace_count)
     for idx in replace_indices:
-        random_sentence = random.choice(corpus_sentences)
-        modified_window[idx] = random_sentence
+        if modified_window[idx] != "[PAD]":  # Only replace non-padding sentences
+            random_sentence = random.choice(corpus_sentences)
+            modified_window[idx] = random_sentence
     return modified_window
 
-def generate_data(paragraphs: List[str], window_size: int) -> Tuple[List[List[str]], List[int], List[List[int]]]:
+def generate_data(paragraphs: List[str], window_size: int, stride: int) -> Tuple[List[List[str]], List[int], List[List[int]]]:
     all_windows = []
     labels = []
     attention_masks = []
@@ -37,7 +43,7 @@ def generate_data(paragraphs: List[str], window_size: int) -> Tuple[List[List[st
     
     for paragraph in cleaned_paragraphs:
         sentences = split_into_sentences(paragraph)
-        windows = create_windows(sentences, window_size)
+        windows = create_windows(sentences, window_size, stride)
         
         for window in windows:
             # Decide if this window should have replacements
@@ -52,8 +58,8 @@ def generate_data(paragraphs: List[str], window_size: int) -> Tuple[List[List[st
                 modified_window = window
                 label = 0
             
-            # Generate attention mask: 1 for real sentences, 0 for replaced
-            attention_mask = [0 if modified_window[i] != window[i] else 1 for i in range(len(window))]
+            # Generate attention mask: 1 for valid (non-padding) sentences, 0 for padding sentences
+            attention_mask = [1 if sentence != "[PAD]" else 0 for sentence in modified_window]
 
             all_windows.append(modified_window)
             labels.append(label)
@@ -67,8 +73,9 @@ paragraphs = [
     "Another paragraph begins here.<br /><br />It has multiple sentences. The third sentence is here. And it ends with this one."
 ]
 window_size = 3
+stride = 2
 
-data, labels, attention_masks = generate_data(paragraphs, window_size)
+data, labels, attention_masks = generate_data(paragraphs, window_size, stride)
 
 # Display the prepared data
 for i in range(len(data)):
